@@ -23,7 +23,7 @@ using Forms=System.Windows.Forms;
 
 [assembly:AssemblyTitle("BitGlance · 比特一瞥")]
 [assembly:AssemblyDescription("BTC ETH SOL USDT perpetual desktop price widget")]
-[assembly:AssemblyVersion("1.2.6.0")]
+[assembly:AssemblyVersion("1.2.7.0")]
 [assembly:AssemblyCopyright("BitGlance contributors; window placement based on PayDance © 2026 Mr.Baoboer")]
 namespace BitGlance {
  public sealed class Preferences {
@@ -53,7 +53,7 @@ namespace BitGlance {
   public bool ShowSuperTrend {get;set;}
   public int StPeriod {get;set;}
   public double StMult {get;set;}
-  public Preferences(){Interval=15;Opacity=95;Symbol="BTCUSDT";Feed="binance";ShowChange=true;ShowUnit=true;MiniChart=true;ChartInterval="5m";MiniChartWidth=320;MiniChartHeight=280;ShowEma=true;Ema1=7;Ema2=20;Ema3=50;ShowSuperTrend=true;StPeriod=10;StMult=3.0;}
+  public Preferences(){Interval=15;Opacity=95;Symbol="BTCUSDT";Feed="binance";ShowChange=true;ShowUnit=true;MiniChart=true;ChartInterval="5m";MiniChartWidth=340;MiniChartHeight=360;ShowEma=true;Ema1=7;Ema2=20;Ema3=50;ShowSuperTrend=true;StPeriod=10;StMult=3.0;}
   public static int ClampEma(int period){return period<2?2:(period>200?200:period);}
   public static int ClampStPeriod(int period){return period<2?2:(period>100?100:period);}
   public static double ClampStMult(double mult){if(mult<0.5)return 0.5;if(mult>10)return 10;return mult;}
@@ -134,7 +134,7 @@ namespace BitGlance {
   void DisplayChanged(object s,EventArgs e){window.Dispatcher.BeginInvoke(new Action(RestorePosition));}
   void Bind(string name,Action action){Find<Button>(name).Click+=(s,e)=>action();}
   Preferences Load(){
-   try {var p=new JavaScriptSerializer().Deserialize<Preferences>(File.ReadAllText(settingsPath));if(p==null)throw new Exception();p.Interval=new[]{5,15,30,60}.Contains(p.Interval)?p.Interval:15;p.Opacity=WindowPlacement.Opacity(p.Opacity);p.Symbol=MarketClient.IsSupported(p.Symbol)?p.Symbol:"BTCUSDT";p.Feed=MarketClient.IsSource(p.Feed)?p.Feed:"binance";p.ChartInterval=MarketClient.IsInterval(p.ChartInterval)?p.ChartInterval:"5m";if(p.MiniChartWidth<=0)p.MiniChartWidth=320;if(p.MiniChartHeight<=0)p.MiniChartHeight=280;if(p.Ema1==0&&p.Ema2==0&&p.Ema3==0){p.Ema1=7;p.Ema2=20;p.Ema3=50;p.ShowEma=true;}else{p.Ema1=Preferences.ClampEma(p.Ema1);p.Ema2=Preferences.ClampEma(p.Ema2);p.Ema3=Preferences.ClampEma(p.Ema3);}if(p.StPeriod==0){p.StPeriod=10;p.StMult=3.0;p.ShowSuperTrend=true;}else{p.StPeriod=Preferences.ClampStPeriod(p.StPeriod);p.StMult=Preferences.ClampStMult(p.StMult);}return p;}catch{return new Preferences();}
+   try {var p=new JavaScriptSerializer().Deserialize<Preferences>(File.ReadAllText(settingsPath));if(p==null)throw new Exception();p.Interval=new[]{5,15,30,60}.Contains(p.Interval)?p.Interval:15;p.Opacity=WindowPlacement.Opacity(p.Opacity);p.Symbol=MarketClient.IsSupported(p.Symbol)?p.Symbol:"BTCUSDT";p.Feed=MarketClient.IsSource(p.Feed)?p.Feed:"binance";p.ChartInterval=MarketClient.IsInterval(p.ChartInterval)?p.ChartInterval:"5m";if(p.MiniChartWidth<=0)p.MiniChartWidth=340;if(p.MiniChartHeight<=0)p.MiniChartHeight=360;if(p.MiniChartWidth==320&&p.MiniChartHeight==280){p.MiniChartWidth=340;p.MiniChartHeight=360;}if(p.Ema1==0&&p.Ema2==0&&p.Ema3==0){p.Ema1=7;p.Ema2=20;p.Ema3=50;p.ShowEma=true;}else{p.Ema1=Preferences.ClampEma(p.Ema1);p.Ema2=Preferences.ClampEma(p.Ema2);p.Ema3=Preferences.ClampEma(p.Ema3);}if(p.StPeriod==0){p.StPeriod=10;p.StMult=3.0;p.ShowSuperTrend=true;}else{p.StPeriod=Preferences.ClampStPeriod(p.StPeriod);p.StMult=Preferences.ClampStMult(p.StMult);}return p;}catch{return new Preferences();}
   }
   void Save(){
    try {Directory.CreateDirectory(Path.GetDirectoryName(settingsPath));string tmp=settingsPath+".tmp";File.WriteAllText(tmp,new JavaScriptSerializer().Serialize(prefs));if(File.Exists(settingsPath))File.Replace(tmp,settingsPath,null);else File.Move(tmp,settingsPath);}catch { }
@@ -214,7 +214,7 @@ namespace BitGlance {
   }
   static double ClampSize(double value,double min,double max){return Math.Max(min,Math.Min(max,value));}
   void ApplyMiniChartSize(){
-   double w=prefs.MiniChartWidth>0?prefs.MiniChartWidth:320;double h=prefs.MiniChartHeight>0?prefs.MiniChartHeight:280;
+   double w=prefs.MiniChartWidth>0?prefs.MiniChartWidth:340;double h=prefs.MiniChartHeight>0?prefs.MiniChartHeight:360;
    window.Width=ClampSize(w,260,960);window.Height=ClampSize(h,220,720);
   }
   void BeginMiniResize(Point screen){
@@ -440,7 +440,7 @@ namespace BitGlance {
   void About(Window owner){
    string host;
    try{host=new Uri(client.BaseUrl).Host;}catch{host=client.BaseUrl;}
-   MessageBox.Show(owner,"比特一瞥 BitGlance 1.2.6\n\n参考 PayDance 的桌面交互与窗口位置恢复实现。\n这是修改与移植版本，非 PayDance 官方产品。\n\nBased on PayDance. Copyright (C) 2026 Mr.Baoboer.\nLicensed under the GNU Affero General Public License v3.0 only.\n附加条款：legal/ADDITIONAL_TERMS.md\n\n完整源码与构建脚本位于应用旁的 source 文件夹。\n本应用不含交易功能、不需要账号。\n设置仅保存于本机 LocalAppData/BitGlance。\n\n行情来源："+MarketClient.DisplayName(prefs.Feed)+"（"+host+"）USDT 永续，最新成交价。\n设置可切换 币安 / OKX / Bitget，并可自定义 API 域名。\n上游：https://github.com/MrBaoboer/PayDance","关于与开源",MessageBoxButton.OK,MessageBoxImage.Information);
+   MessageBox.Show(owner,"比特一瞥 BitGlance 1.2.7\n\n参考 PayDance 的桌面交互与窗口位置恢复实现。\n这是修改与移植版本，非 PayDance 官方产品。\n\nBased on PayDance. Copyright (C) 2026 Mr.Baoboer.\nLicensed under the GNU Affero General Public License v3.0 only.\n附加条款：legal/ADDITIONAL_TERMS.md\n\n完整源码与构建脚本位于应用旁的 source 文件夹。\n本应用不含交易功能、不需要账号。\n设置仅保存于本机 LocalAppData/BitGlance。\n\n行情来源："+MarketClient.DisplayName(prefs.Feed)+"（"+host+"）USDT 永续，最新成交价。\n设置可切换 币安 / OKX / Bitget，并可自定义 API 域名。\n上游：https://github.com/MrBaoboer/PayDance","关于与开源",MessageBoxButton.OK,MessageBoxImage.Information);
   }
    public void Exit(){if(exiting)return;CapturePosition();Save();Cleanup();app.Shutdown();}
   void Cleanup(){if(exiting)return;exiting=true;Microsoft.Win32.SystemEvents.DisplaySettingsChanged-=DisplayChanged;timer.Stop();cts.Cancel();cts.Dispose();client.Dispose();if(tray!=null){tray.Visible=false;tray.Dispose();}}

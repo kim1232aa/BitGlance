@@ -61,18 +61,21 @@
      <ContentControl x:Name="MiniTarget" VerticalAlignment="Center" HorizontalAlignment="Center"><StackPanel x:Name="MiniContent"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center"><TextBlock x:Name="MiniPrice" Text="— —" FontSize="24" FontFamily="Segoe UI" FontWeight="SemiBold"/><TextBlock x:Name="MiniUnit" Text="USDT" Foreground="{DynamicResource Muted}" FontSize="10" VerticalAlignment="Bottom" Margin="6,0,0,4"/></StackPanel><TextBlock x:Name="MiniStatus" Text="正在获取价格" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,2,0,0" HorizontalAlignment="Center"/></StackPanel></ContentControl>
      <Button x:Name="MiniPriceIndicatorsButton" Content="指标" FontSize="11" Height="26" MinWidth="44" Padding="10,2" HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource Soft}" ToolTip="指标设置（均线 / 超级趋势）" AutomationProperties.Name="指标设置"/>
     </Grid>
-    <Grid x:Name="MiniChartPanel" Visibility="Collapsed" Margin="14,12,14,12">
-     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <Grid x:Name="MiniChartPanel" Visibility="Collapsed" Margin="12,8,12,8">
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
      <Grid>
       <TextBlock x:Name="MiniPairLabel" Text="BTCUSDT 永续 · 5分钟" FontSize="11" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,90,0"/>
-      <Button x:Name="MiniEmaSettingsButton" Content="设置 · 指标" FontSize="11" Height="26" MinWidth="78" Padding="10,2" HorizontalAlignment="Right" VerticalAlignment="Center" Background="{DynamicResource Soft}" ToolTip="指标设置（均线 / 超级趋势）" AutomationProperties.Name="指标设置"/>
+      <Button x:Name="MiniEmaSettingsButton" Content="设置 · 指标" FontSize="11" Height="24" MinWidth="78" Padding="8,1" HorizontalAlignment="Right" VerticalAlignment="Center" Background="{DynamicResource Soft}" ToolTip="指标设置（均线 / 超级趋势）" AutomationProperties.Name="指标设置"/>
      </Grid>
-     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
-      <TextBlock x:Name="MiniChartPrice" Text="— —" FontFamily="Segoe UI" FontSize="28" FontWeight="SemiBold"/>
-      <TextBlock x:Name="MiniChartUnit" Text="USDT" Foreground="{DynamicResource Muted}" FontSize="11" VerticalAlignment="Bottom" Margin="7,0,0,5"/>
-     </StackPanel>
-     <TextBlock Grid.Row="2" x:Name="MiniChartChange" Text="正在获取价格" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,2,0,8"/>
-     <Grid Grid.Row="3">
+     <Grid Grid.Row="1" Margin="0,4,0,6">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+       <TextBlock x:Name="MiniChartPrice" Text="— —" FontFamily="Segoe UI" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Bottom"/>
+       <TextBlock x:Name="MiniChartUnit" Text="USDT" Foreground="{DynamicResource Muted}" FontSize="10" VerticalAlignment="Bottom" Margin="5,0,0,2"/>
+      </StackPanel>
+      <TextBlock Grid.Column="1" x:Name="MiniChartChange" Text="正在获取价格" FontSize="11" Foreground="{DynamicResource Muted}" VerticalAlignment="Bottom" Margin="8,0,0,2" TextAlignment="Right"/>
+     </Grid>
+     <Grid Grid.Row="2">
       <ContentControl x:Name="MiniChartHost"/>
       <Border x:Name="MiniResizeGrip" Width="16" Height="16" HorizontalAlignment="Right" VerticalAlignment="Bottom" Cursor="SizeNWSE" Background="#01000000" ToolTip="拖动缩放迷你窗">
        <Path Stroke="{DynamicResource Muted}" StrokeThickness="1.2" Data="M4,12 L12,4 M7,12 L12,7 M10,12 L12,10" Margin="2"/>
