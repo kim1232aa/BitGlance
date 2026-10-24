@@ -89,6 +89,11 @@ namespace BitGlance {
     Assert(Math.Abs(PriceChart.VolumePaneHeight(200,false)-24)<1e-9&&PriceChart.VolumePaneHeight(80,true)>=10,"volume pane is ~12% full / ~10% compact with clamps");
     Assert(PriceChart.VolumeBarHeight(50,100,20)==10&&PriceChart.VolumeBarHeight(0,100,20)==0&&PriceChart.VolumeBarHeight(10,0,20)==0,"volume bars scale to visible max and ignore zero max");
     Assert(PriceChart.FormatAxisTime(0)==MarketClient.Unix(0).ToLocalTime().ToString("HH:mm",CultureInfo.InvariantCulture),"axis time is local HH:mm");
+    Assert(PriceChart.PriceAxisTickCount(100,false)>=4&&PriceChart.PriceAxisTickCount(60,true)<=5,"price axis tick count respects height and compact");
+    var ticks=PriceChart.NicePriceTicks(80650,80850,5);Assert(ticks.Length>=2&&ticks[0]>=80650&&ticks[ticks.Length-1]<=80850,"nice price ticks stay inside visible range");
+    Assert(ticks.Zip(ticks.Skip(1),(a,b)=>b-a).Distinct().Count()==1,"nice price ticks use constant spacing");
+    Assert(PriceChart.FormatAxisPrice(80850,"N2")=="80,850.00","axis price uses grouped N2 format");
+    Assert(PriceChart.NicePriceTicks(10,10,4).Length==0&&PriceChart.NiceNumber(0,true)==1,"degenerate price range yields no ticks");
     Assert(MarketClient.Intervals.Select(MarketClient.IntervalMinutes).SequenceEqual(new[]{1,5,15,60}),"four supported candle periods map to correct durations");
     var history=Enumerable.Range(0,300).Select(i=>new Candle{Time=(i+1)*60000L,Open=2,High=3,Low=1,Close=2,Volume=0}).ToList();
     var view=new ChartViewport();view.Update(new List<Candle>(),history);
