@@ -55,7 +55,7 @@ namespace BitGlance {
     Reject(()=>MarketClient.ParseCandles(bars.Replace("2000","999999999999999")),"rejects out of range candle timestamps");
     Assert(MarketClient.ParseCandles(bars)[0].Volume==0,"flat candles with no trades remain valid");
     Assert(!legacy.Candles&&legacy.ChartInterval=="5m","old settings default to line chart and 5m candles");
-    Assert(!legacy.MiniChart,"old settings default MiniChart off");
+    Assert(legacy.MiniChart,"old JSON without MiniChart inherits constructor default on");
     var fresh=new Preferences();
     Assert(fresh.Feed=="binance"&&string.IsNullOrEmpty(fresh.BinanceBase),"new preferences default to binance feed");
     var extreme=new List<Candle>{new Candle{High=2,Low=1},new Candle{High=5,Low=2},new Candle{High=4,Low=0.5m},new Candle{High=3,Low=1}};
@@ -68,7 +68,21 @@ namespace BitGlance {
     Assert(double.IsNaN(ema3[0])&&double.IsNaN(ema3[1])&&Math.Abs(ema3[2]-24)<1e-9&&Math.Abs(ema3[3]-26)<1e-9&&Math.Abs(ema3[4]-28)<1e-9,"EMA uses SMA seed then k=2/(period+1)");
     Assert(PriceChart.ComputeEma(emaSeed,10).All(double.IsNaN),"EMA stays NaN until period bars exist");
     Assert(fresh.ShowEma&&fresh.Ema1==7&&fresh.Ema2==20&&fresh.Ema3==50,"new preferences default three EMAs 7/20/50 on");
+    Assert(fresh.MiniChart&&fresh.ShowSuperTrend&&fresh.StPeriod==10&&Math.Abs(fresh.StMult-3.0)<1e-9,"new preferences default MiniChart + SuperTrend 10/3 on");
     Assert(Preferences.ClampEma(1)==2&&Preferences.ClampEma(201)==200,"EMA periods clamp to 2..200");
+    Assert(Preferences.ClampStPeriod(1)==2&&Preferences.ClampStPeriod(101)==100,"SuperTrend ATR period clamps to 2..100");
+    Assert(Math.Abs(Preferences.ClampStMult(0.1)-0.5)<1e-9&&Math.Abs(Preferences.ClampStMult(12)-10)<1e-9,"SuperTrend multiplier clamps to 0.5..10");
+    // Rising then falling series: SuperTrend stays NaN until ATR period, then flips down after a clear break.
+    var stBars=new List<Candle>();
+    for(int i=0;i<12;i++)stBars.Add(new Candle{Open=100+i,High=101+i,Low=99+i,Close=100.5m+i,Volume=1});
+    for(int i=0;i<8;i++){decimal px=112-i*2;stBars.Add(new Candle{Open=px,High=px+1,Low=px-1,Close=px-0.5m,Volume=1});}
+    var st=PriceChart.ComputeSuperTrend(stBars,10,3.0);
+    Assert(st.Values.Take(9).All(double.IsNaN),"SuperTrend stays NaN until ATR period bars");
+    Assert(!double.IsNaN(st.Values[9])&&st.Directions[9]!=0,"SuperTrend has value at first ATR bar");
+    int lastDir=0;double lastVal;Assert(PriceChart.TryLastSuperTrend(st,out lastVal,out lastDir)&&!double.IsNaN(lastVal)&&lastDir!=0,"SuperTrend last value helper returns final direction");
+    Assert(lastDir==-1,"SuperTrend flips to down after sustained decline");
+    var emaLast=PriceChart.ComputeEma(emaSeed,3);double lv;Assert(PriceChart.TryLastValue(emaLast,out lv)&&Math.Abs(lv-28)<1e-9,"legend last-value helper skips leading NaN");
+    Assert(PriceChart.FormatLegendValue(double.NaN,"N2")=="—"&&PriceChart.FormatLegendValue(12.5,"N2")=="12.50","legend formats NaN as dash");
     Assert(MarketClient.Intervals.Select(MarketClient.IntervalMinutes).SequenceEqual(new[]{1,5,15,60}),"four supported candle periods map to correct durations");
     var history=Enumerable.Range(0,300).Select(i=>new Candle{Time=(i+1)*60000L,Open=2,High=3,Low=1,Close=2,Volume=0}).ToList();
     var view=new ChartViewport();view.Update(new List<Candle>(),history);

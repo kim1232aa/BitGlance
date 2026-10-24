@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Modified 2026-10-24: PreviewMouseWheel zoom, visible-range high/low labels, compact mini chart, three EMA overlays.
+// Modified 2026-10-24: PreviewMouseWheel zoom, visible-range high/low labels, compact mini chart,
+// three EMA overlays, classic SuperTrend, top-left indicator legend with last values.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -9,14 +10,20 @@ using System.Windows.Input;
 using System.Windows.Media;
 
 namespace BitGlance {
+ public sealed class SuperTrendSeries {
+  public double[] Values;
+  public int[] Directions; // 1=up, -1=down, 0=unset
+  public SuperTrendSeries(int n){Values=new double[n];Directions=new int[n];for(int i=0;i<n;i++)Values[i]=double.NaN;}
+ }
  public sealed class PriceChart:FrameworkElement {
   List<Candle> data=new List<Candle>();
   public readonly ChartViewport View=new ChartViewport();
   public event Action ViewChanged;
   public List<Candle> Data {get{return data;}set{var rows=value??new List<Candle>();View.Update(data,rows);data=rows;Changed();}}
-  public bool Dark,Candlesticks,Compact,ShowEma=true;
+  public bool Dark,Candlesticks,Compact,ShowEma=true,ShowSuperTrend=true;
   public int IntervalMinutes=5;
-  public int Ema1=7,Ema2=20,Ema3=50;
+  public int Ema1=7,Ema2=20,Ema3=50,StPeriod=10;
+  public double StMult=3.0;
   public string PriceFormat="N2",Asset="BTC";
   double hover=-1,dragX;
   bool dragging;
@@ -70,6 +77,61 @@ namespace BitGlance {
    for(int i=period;i<n;i++){ema=(double)rows[i].Close*k+ema*(1-k);values[i]=ema;}
    return values;
   }
+  // Classic SuperTrend (not LuxAlgo): Wilder ATR, HL2 ± mult*ATR sticky bands, flip on close cross.
+  public static SuperTrendSeries ComputeSuperTrend(IList<Candle> rows,int atrPeriod,double multiplier){
+   int n=rows==null?0:rows.Count;var series=new SuperTrendSeries(n);
+   if(atrPeriod<2||multiplier<=0||n==0)return series;
+   var tr=new double[n];
+   tr[0]=(double)(rows[0].High-rows[0].Low);
+   for(int i=1;i<n;i++){
+    double h=(double)rows[i].High,l=(double)rows[i].Low,pc=(double)rows[i-1].Close;
+    double a=h-l,b=Math.Abs(h-pc),c=Math.Abs(l-pc);
+    tr[i]=a>b?(a>c?a:c):(b>c?b:c);
+   }
+   var atr=new double[n];for(int i=0;i<n;i++)atr[i]=double.NaN;
+   if(n<atrPeriod)return series;
+   double seed=0;for(int i=0;i<atrPeriod;i++)seed+=tr[i];
+   atr[atrPeriod-1]=seed/atrPeriod;
+   for(int i=atrPeriod;i<n;i++)atr[i]=(atr[i-1]*(atrPeriod-1)+tr[i])/atrPeriod;
+   int start=atrPeriod-1;
+   double prevUpper=0,prevLower=0;int prevDir=1;
+   for(int i=start;i<n;i++){
+    double hl2=((double)rows[i].High+(double)rows[i].Low)/2.0;
+    double basicUpper=hl2+multiplier*atr[i];
+    double basicLower=hl2-multiplier*atr[i];
+    double finalUpper,finalLower;
+    if(i==start){finalUpper=basicUpper;finalLower=basicLower;}
+    else{
+     double prevClose=(double)rows[i-1].Close;
+     finalUpper=(basicUpper<prevUpper||prevClose>prevUpper)?basicUpper:prevUpper;
+     finalLower=(basicLower>prevLower||prevClose<prevLower)?basicLower:prevLower;
+    }
+    int dir;
+    if(i==start)dir=((double)rows[i].Close>=hl2)?1:-1;
+    else if(prevDir==1)dir=((double)rows[i].Close<finalLower)?-1:1;
+    else dir=((double)rows[i].Close>finalUpper)?1:-1;
+    series.Directions[i]=dir;
+    series.Values[i]=dir==1?finalLower:finalUpper;
+    prevUpper=finalUpper;prevLower=finalLower;prevDir=dir;
+   }
+   return series;
+  }
+  public static bool TryLastValue(double[] series,out double value){
+   value=double.NaN;if(series==null)return false;
+   for(int i=series.Length-1;i>=0;i--){if(!double.IsNaN(series[i])){value=series[i];return true;}}
+   return false;
+  }
+  public static bool TryLastSuperTrend(SuperTrendSeries series,out double value,out int direction){
+   value=double.NaN;direction=0;if(series==null||series.Values==null)return false;
+   for(int i=series.Values.Length-1;i>=0;i--){
+    if(!double.IsNaN(series.Values[i])){value=series.Values[i];direction=series.Directions[i];return true;}
+   }
+   return false;
+  }
+  public static string FormatLegendValue(double value,string priceFormat){
+   if(double.IsNaN(value))return "—";
+   return value.ToString(string.IsNullOrEmpty(priceFormat)?"N2":priceFormat,inv);
+  }
   static int ClampPeriod(int period){return period<2?2:(period>200?200:period);}
   FormattedText Label(string text,double size,Brush color){return new FormattedText(text,inv,FlowDirection.LeftToRight,new Typeface("Segoe UI"),size,color,VisualTreeHelper.GetDpi(this).PixelsPerDip);}
   protected override void OnRender(DrawingContext dc){
@@ -82,6 +144,18 @@ namespace BitGlance {
    if(rows.Count<2)return;
    int slots=Candlesticks?Math.Max(1,View.Slots):rows.Count;
    double lo=(double)rows.Min(c=>Candlesticks?c.Low:c.Close),hi=(double)rows.Max(c=>Candlesticks?c.High:c.Close);
+   // Expand range to include indicator values so lines stay on-plot.
+   if(Candlesticks){
+    if(ShowEma){
+     ExpandRange(ComputeEma(data,ClampPeriod(Ema1)),ref lo,ref hi);
+     ExpandRange(ComputeEma(data,ClampPeriod(Ema2)),ref lo,ref hi);
+     ExpandRange(ComputeEma(data,ClampPeriod(Ema3)),ref lo,ref hi);
+    }
+    if(ShowSuperTrend){
+     var st=ComputeSuperTrend(data,Preferences.ClampStPeriod(StPeriod),Preferences.ClampStMult(StMult));
+     ExpandRange(st.Values,ref lo,ref hi);
+    }
+   }
    double pad=Math.Max((hi-lo)*0.08,Math.Max(hi*0.00005,0.000001));lo-=pad;hi+=pad;
    Func<decimal,double> y=price=>bottom-((double)price-lo)/(hi-lo)*(bottom-top);
    Func<int,double> x=i=>Candlesticks?left+(i+0.5)*PlotWidth/slots:left+PlotWidth*(rows[i].Time-rows[0].Time)/(double)(rows[rows.Count-1].Time-rows[0].Time);
@@ -115,7 +189,12 @@ namespace BitGlance {
     var fill=new StreamGeometry();using(var g=fill.Open()){g.BeginFigure(new Point(left,h),true,true);g.PolyLineTo(points,true,false);g.LineTo(new Point(right,h),true,false);}fill.Freeze();
     dc.DrawGeometry(new LinearGradientBrush(Color.FromArgb(52,233,129,45),Color.FromArgb(0,233,129,45),90),null,fill);dc.DrawGeometry(null,new Pen(orange,1.8),path);dc.DrawEllipse(orange,null,points[points.Length-1],3,3);
    }
-   if(Candlesticks&&ShowEma)DrawEmas(dc,x,y,slots);
+   if(Candlesticks){
+    double[] emaA=null,emaB=null,emaC=null;SuperTrendSeries st=null;
+    if(ShowEma){emaA=ComputeEma(data,ClampPeriod(Ema1));emaB=ComputeEma(data,ClampPeriod(Ema2));emaC=ComputeEma(data,ClampPeriod(Ema3));DrawEmaLine(dc,emaA,x,y,emaBlue);DrawEmaLine(dc,emaB,x,y,emaOrange);DrawEmaLine(dc,emaC,x,y,emaPurple);}
+    if(ShowSuperTrend){st=ComputeSuperTrend(data,Preferences.ClampStPeriod(StPeriod),Preferences.ClampStMult(StMult));DrawSuperTrend(dc,st,x,y);}
+    if(ShowEma||ShowSuperTrend)DrawLegend(dc,left,top,emaA,emaB,emaC,st);
+   }
    if(hover>=left&&hover<=right&&!dragging){
     int index;
     if(Candlesticks){int slotsH=Math.Max(1,View.Slots);index=Math.Min(rows.Count-1,Math.Max(0,(int)((hover-left)/PlotWidth*slotsH)));}
@@ -127,6 +206,11 @@ namespace BitGlance {
     double width=Math.Min(w,label.Width+16),tx=Math.Max(0,Math.Min(w-width,px-width/2));
     dc.DrawRoundedRectangle(Surface,new Pen(Muted,0.5),new Rect(tx,0,width,label.Height+10),5,5);dc.DrawText(label,new Point(tx+8,5));
    }
+  }
+  void ExpandRange(double[] series,ref double lo,ref double hi){
+   if(series==null||data.Count==0)return;
+   int last=Math.Min(View.First+View.Count,series.Length);
+   for(int i=View.First;i<last;i++){if(double.IsNaN(series[i]))continue;if(series[i]<lo)lo=series[i];if(series[i]>hi)hi=series[i];}
   }
   void DrawVisibleExtremes(DrawingContext dc,List<Candle> rows,Func<int,double> x,Func<decimal,double> y,double left,double right,double w){
    int hiIdx,loIdx;VisibleHighLow(rows,out hiIdx,out loIdx);
@@ -141,25 +225,54 @@ namespace BitGlance {
    if(placeRight){dc.DrawLine(pen,new Point(px,py),new Point(px+lineLen,py));double tx=Math.Min(w-lw-2,px+lineLen+pad);dc.DrawText(label,new Point(tx,high?py-lh-1:py+1));}
    else{dc.DrawLine(pen,new Point(px,py),new Point(px-lineLen,py));double tx=Math.Max(2,px-lineLen-pad-lw);dc.DrawText(label,new Point(tx,high?py-lh-1:py+1));}
   }
-  void DrawEmas(DrawingContext dc,Func<int,double> x,Func<decimal,double> y,int slots){
-   if(data.Count==0||slots<=0)return;
-   DrawEmaLine(dc,ComputeEma(data,ClampPeriod(Ema1)),x,y,emaBlue);
-   DrawEmaLine(dc,ComputeEma(data,ClampPeriod(Ema2)),x,y,emaOrange);
-   DrawEmaLine(dc,ComputeEma(data,ClampPeriod(Ema3)),x,y,emaPurple);
-  }
   void DrawEmaLine(DrawingContext dc,double[] series,Func<int,double> x,Func<decimal,double> y,Brush color){
    if(series==null||series.Length==0)return;
    var points=new List<Point>();
    int last=Math.Min(View.First+View.Count,series.Length);
    for(int i=View.First;i<last;i++){
-    if(double.IsNaN(series[i])){if(points.Count>1)StrokeEma(dc,points,color);points.Clear();continue;}
+    if(double.IsNaN(series[i])){if(points.Count>1)StrokeLine(dc,points,color,1.2);points.Clear();continue;}
     points.Add(new Point(x(i-View.First),(double)y((decimal)series[i])));
    }
-   if(points.Count>1)StrokeEma(dc,points,color);
+   if(points.Count>1)StrokeLine(dc,points,color,1.2);
   }
-  static void StrokeEma(DrawingContext dc,List<Point> points,Brush color){
+  void DrawSuperTrend(DrawingContext dc,SuperTrendSeries series,Func<int,double> x,Func<decimal,double> y){
+   if(series==null||series.Values==null||series.Values.Length==0)return;
+   var points=new List<Point>();int segDir=0;
+   int last=Math.Min(View.First+View.Count,series.Values.Length);
+   Action flush=()=>{if(points.Count>1)StrokeLine(dc,points,segDir>=0?up:down,1.6);points.Clear();};
+   for(int i=View.First;i<last;i++){
+    if(double.IsNaN(series.Values[i])||series.Directions[i]==0){flush();segDir=0;continue;}
+    if(segDir!=0&&series.Directions[i]!=segDir)flush();
+    segDir=series.Directions[i];
+    points.Add(new Point(x(i-View.First),(double)y((decimal)series.Values[i])));
+   }
+   flush();
+  }
+  void DrawLegend(DrawingContext dc,double left,double top,double[] emaA,double[] emaB,double[] emaC,SuperTrendSeries st){
+   double font=Compact?9:10;double x=left+4,y=top+2;
+   Action<string,Brush> chip=(text,color)=>{
+    var label=Label(text,font,color);
+    dc.DrawText(label,new Point(x,y));
+    x+=label.Width+10;
+   };
+   if(ShowEma){
+    double v;string a=TryLastValue(emaA,out v)?FormatLegendValue(v,PriceFormat):"—";
+    string b=TryLastValue(emaB,out v)?FormatLegendValue(v,PriceFormat):"—";
+    string c=TryLastValue(emaC,out v)?FormatLegendValue(v,PriceFormat):"—";
+    chip("EMA"+ClampPeriod(Ema1)+" "+a,emaBlue);
+    chip("EMA"+ClampPeriod(Ema2)+" "+b,emaOrange);
+    chip("EMA"+ClampPeriod(Ema3)+" "+c,emaPurple);
+   }
+   if(ShowSuperTrend&&st!=null){
+    double v;int d;Brush stColor=up;string stText;
+    if(TryLastSuperTrend(st,out v,out d)){stText="ST "+FormatLegendValue(v,PriceFormat)+(d>=0?" ↑":" ↓");stColor=d>=0?up:down;}
+    else stText="ST —";
+    chip(stText,stColor);
+   }
+  }
+  static void StrokeLine(DrawingContext dc,List<Point> points,Brush color,double thickness){
    var path=new StreamGeometry();using(var g=path.Open()){g.BeginFigure(points[0],false,false);g.PolyLineTo(points.Skip(1).ToArray(),true,false);}path.Freeze();
-   dc.DrawGeometry(null,new Pen(color,1.2),path);
+   dc.DrawGeometry(null,new Pen(color,thickness),path);
   }
  }
 }

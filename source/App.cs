@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // BitGlance, created 2026-09-30. Desktop interaction references PayDance.
-// Modified 2026-10-24: multi feed sources; mini-chart EMA overlays + settings button.
+// Modified 2026-10-24: multi feed; EMA + classic SuperTrend; indicator settings on mini chrome.
 using System;
 using System.Diagnostics;
 using System.Globalization;
@@ -23,7 +23,7 @@ using Forms=System.Windows.Forms;
 
 [assembly:AssemblyTitle("BitGlance · 比特一瞥")]
 [assembly:AssemblyDescription("BTC ETH SOL USDT perpetual desktop price widget")]
-[assembly:AssemblyVersion("1.2.5.0")]
+[assembly:AssemblyVersion("1.2.6.0")]
 [assembly:AssemblyCopyright("BitGlance contributors; window placement based on PayDance © 2026 Mr.Baoboer")]
 namespace BitGlance {
  public sealed class Preferences {
@@ -50,8 +50,13 @@ namespace BitGlance {
   public int Ema1 {get;set;}
   public int Ema2 {get;set;}
   public int Ema3 {get;set;}
-  public Preferences(){Interval=15;Opacity=95;Symbol="BTCUSDT";Feed="binance";ShowChange=true;ShowUnit=true;ChartInterval="5m";MiniChartWidth=320;MiniChartHeight=280;ShowEma=true;Ema1=7;Ema2=20;Ema3=50;}
+  public bool ShowSuperTrend {get;set;}
+  public int StPeriod {get;set;}
+  public double StMult {get;set;}
+  public Preferences(){Interval=15;Opacity=95;Symbol="BTCUSDT";Feed="binance";ShowChange=true;ShowUnit=true;MiniChart=true;ChartInterval="5m";MiniChartWidth=320;MiniChartHeight=280;ShowEma=true;Ema1=7;Ema2=20;Ema3=50;ShowSuperTrend=true;StPeriod=10;StMult=3.0;}
   public static int ClampEma(int period){return period<2?2:(period>200?200:period);}
+  public static int ClampStPeriod(int period){return period<2?2:(period>100?100:period);}
+  public static double ClampStMult(double mult){if(mult<0.5)return 0.5;if(mult>10)return 10;return mult;}
   public string BaseOverride(string source){
    if(source=="okx")return OkxBase;
    if(source=="bitget")return BitgetBase;
@@ -107,11 +112,11 @@ namespace BitGlance {
    Bind("ThemeButton",()=>{prefs.Dark=!prefs.Dark;ApplyTheme();Save();});
    Bind("PinButton",()=>{prefs.Pinned=!prefs.Pinned;ApplyPinned();Save();});
    Bind("RefreshButton",()=>{if(!loading){chartAt=DateTime.MinValue;next=DateTime.UtcNow;Refresh();}});
-   Bind("SettingsButton",Settings);Bind("MiniEmaSettingsButton",MiniEmaSettings);Bind("DayButton",()=>SetRange(false));Bind("WeekButton",()=>SetRange(true));
+   Bind("SettingsButton",Settings);Bind("MiniEmaSettingsButton",IndicatorSettings);Bind("MiniPriceIndicatorsButton",IndicatorSettings);Bind("DayButton",()=>SetRange(false));Bind("WeekButton",()=>SetRange(true));
    Bind("LineButton",()=>SetChartMode(false));Bind("CandleButton",()=>SetChartMode(true));Bind("LatestButton",()=>chart.Latest());
    foreach(var interval in MarketClient.Intervals){string value=interval;Bind("Interval"+value+"Button",()=>SetInterval(value));}
    Find<Grid>("TitleBar").MouseLeftButtonDown+=Drag;
-   window.PreviewMouseLeftButtonDown+=(s,e)=>{if(!prefs.Mini)return;if(ShowingMiniChart&&IsOverMiniResize(e.OriginalSource as DependencyObject)){BeginMiniResize(MouseScreenPoint());e.Handled=true;return;}if(ShowingMiniChart&&(IsOverChart(e.OriginalSource as DependencyObject)||IsOverMiniChrome(e.OriginalSource as DependencyObject)))return;BeginMiniPointer(MouseScreenPoint(),unchecked((uint)e.Timestamp));e.Handled=true;};
+   window.PreviewMouseLeftButtonDown+=(s,e)=>{if(!prefs.Mini)return;if(ShowingMiniChart&&IsOverMiniResize(e.OriginalSource as DependencyObject)){BeginMiniResize(MouseScreenPoint());e.Handled=true;return;}if(IsOverMiniChrome(e.OriginalSource as DependencyObject))return;if(ShowingMiniChart&&IsOverChart(e.OriginalSource as DependencyObject))return;BeginMiniPointer(MouseScreenPoint(),unchecked((uint)e.Timestamp));e.Handled=true;};
    window.PreviewMouseMove+=(s,e)=>{if(miniResizing){MoveMiniResize(MouseScreenPoint());e.Handled=true;return;}if(!miniGesture.Active)return;MoveMiniPointer(MouseScreenPoint());e.Handled=true;};
    window.PreviewMouseLeftButtonUp+=(s,e)=>{if(miniResizing){EndMiniResize();e.Handled=true;return;}if(!miniGesture.Active)return;EndMiniPointer(MouseScreenPoint());e.Handled=true;};
    window.LostMouseCapture+=(s,e)=>{if(miniResizing||miniGesture.Active)CancelMiniPointer();};
@@ -129,7 +134,7 @@ namespace BitGlance {
   void DisplayChanged(object s,EventArgs e){window.Dispatcher.BeginInvoke(new Action(RestorePosition));}
   void Bind(string name,Action action){Find<Button>(name).Click+=(s,e)=>action();}
   Preferences Load(){
-   try {var p=new JavaScriptSerializer().Deserialize<Preferences>(File.ReadAllText(settingsPath));if(p==null)throw new Exception();p.Interval=new[]{5,15,30,60}.Contains(p.Interval)?p.Interval:15;p.Opacity=WindowPlacement.Opacity(p.Opacity);p.Symbol=MarketClient.IsSupported(p.Symbol)?p.Symbol:"BTCUSDT";p.Feed=MarketClient.IsSource(p.Feed)?p.Feed:"binance";p.ChartInterval=MarketClient.IsInterval(p.ChartInterval)?p.ChartInterval:"5m";if(p.MiniChartWidth<=0)p.MiniChartWidth=320;if(p.MiniChartHeight<=0)p.MiniChartHeight=280;if(p.Ema1==0&&p.Ema2==0&&p.Ema3==0){p.Ema1=7;p.Ema2=20;p.Ema3=50;p.ShowEma=true;}else{p.Ema1=Preferences.ClampEma(p.Ema1);p.Ema2=Preferences.ClampEma(p.Ema2);p.Ema3=Preferences.ClampEma(p.Ema3);}return p;}catch{return new Preferences();}
+   try {var p=new JavaScriptSerializer().Deserialize<Preferences>(File.ReadAllText(settingsPath));if(p==null)throw new Exception();p.Interval=new[]{5,15,30,60}.Contains(p.Interval)?p.Interval:15;p.Opacity=WindowPlacement.Opacity(p.Opacity);p.Symbol=MarketClient.IsSupported(p.Symbol)?p.Symbol:"BTCUSDT";p.Feed=MarketClient.IsSource(p.Feed)?p.Feed:"binance";p.ChartInterval=MarketClient.IsInterval(p.ChartInterval)?p.ChartInterval:"5m";if(p.MiniChartWidth<=0)p.MiniChartWidth=320;if(p.MiniChartHeight<=0)p.MiniChartHeight=280;if(p.Ema1==0&&p.Ema2==0&&p.Ema3==0){p.Ema1=7;p.Ema2=20;p.Ema3=50;p.ShowEma=true;}else{p.Ema1=Preferences.ClampEma(p.Ema1);p.Ema2=Preferences.ClampEma(p.Ema2);p.Ema3=Preferences.ClampEma(p.Ema3);}if(p.StPeriod==0){p.StPeriod=10;p.StMult=3.0;p.ShowSuperTrend=true;}else{p.StPeriod=Preferences.ClampStPeriod(p.StPeriod);p.StMult=Preferences.ClampStMult(p.StMult);}return p;}catch{return new Preferences();}
   }
   void Save(){
    try {Directory.CreateDirectory(Path.GetDirectoryName(settingsPath));string tmp=settingsPath+".tmp";File.WriteAllText(tmp,new JavaScriptSerializer().Serialize(prefs));if(File.Exists(settingsPath))File.Replace(tmp,settingsPath,null);else File.Move(tmp,settingsPath);}catch { }
@@ -169,7 +174,7 @@ namespace BitGlance {
   static string IntervalZh(string interval){return interval=="1H"?"1小时":MarketClient.IntervalMinutes(interval)+"分钟";}
   bool IsOverChart(DependencyObject src){while(src!=null){if(ReferenceEquals(src,chart))return true;src=VisualTreeHelper.GetParent(src);}return false;}
   bool IsOverMiniResize(DependencyObject src){return IsOverNamed(src,"MiniResizeGrip");}
-  bool IsOverMiniChrome(DependencyObject src){return IsOverNamed(src,"MiniEmaSettingsButton");}
+  bool IsOverMiniChrome(DependencyObject src){return IsOverNamed(src,"MiniEmaSettingsButton","MiniPriceIndicatorsButton");}
   static bool IsOverNamed(DependencyObject src,params string[] names){while(src!=null){var fe=src as FrameworkElement;if(fe!=null&&System.Array.IndexOf(names,fe.Name)>=0)return true;src=VisualTreeHelper.GetParent(src);}return false;}
   void SyncChartHost(bool leavingMiniChart){
    var full=Find<ContentControl>("ChartHost");var mini=Find<ContentControl>("MiniChartHost");
@@ -230,7 +235,7 @@ namespace BitGlance {
   void ApplyTheme(){
    string[] keys={"Surface","Ink","Muted","Line","Soft"};string[] colors=prefs.Dark?new[]{"#1C2420","#EFF2EC","#96A49A","#354139","#29352D"}:new[]{"#FCFBF8","#242B29","#828980","#E8E9E2","#F2F3EE"};
    for(int i=0;i<keys.Length;i++)window.Resources[keys[i]]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors[i]));
-   chart.Dark=prefs.Dark;ApplyEmaPrefs();ApplyPinned();ApplyRangeButtons();ApplyChartButtons();ApplyAssetButtons();UpdateQuote();
+   chart.Dark=prefs.Dark;ApplyIndicatorPrefs();ApplyPinned();ApplyRangeButtons();ApplyChartButtons();ApplyAssetButtons();UpdateQuote();
   }
   string Asset {get{return prefs.Symbol.Replace("USDT","");}}
   string PriceFormat {get{return Asset=="SOL"?"N3":"N2";}}
@@ -328,31 +333,43 @@ namespace BitGlance {
    Find<TextBlock>("MiniChartChange").Visibility=prefs.ShowChange||offline||stale||quote==null?Visibility.Visible:Visibility.Collapsed;
    ResizeMini();
   }
-  void ApplyEmaPrefs(){
-   chart.ShowEma=prefs.ShowEma;chart.Ema1=Preferences.ClampEma(prefs.Ema1);chart.Ema2=Preferences.ClampEma(prefs.Ema2);chart.Ema3=Preferences.ClampEma(prefs.Ema3);chart.InvalidateVisual();
+  void ApplyIndicatorPrefs(){
+   chart.ShowEma=prefs.ShowEma;chart.Ema1=Preferences.ClampEma(prefs.Ema1);chart.Ema2=Preferences.ClampEma(prefs.Ema2);chart.Ema3=Preferences.ClampEma(prefs.Ema3);
+   chart.ShowSuperTrend=prefs.ShowSuperTrend;chart.StPeriod=Preferences.ClampStPeriod(prefs.StPeriod);chart.StMult=Preferences.ClampStMult(prefs.StMult);
+   chart.InvalidateVisual();
   }
-  void MiniEmaSettings(){
-   var dialog=new Window{Title="均线设置",Width=268,Height=280,ResizeMode=ResizeMode.NoResize,WindowStartupLocation=WindowStartupLocation.CenterOwner,Owner=window,Background=Brush("Surface"),FontFamily=window.FontFamily,Foreground=Brush("Ink"),ShowInTaskbar=false,Topmost=window.Topmost};
+  void IndicatorSettings(){
+   var dialog=new Window{Title="指标设置",Width=300,Height=460,ResizeMode=ResizeMode.NoResize,WindowStartupLocation=WindowStartupLocation.CenterOwner,Owner=window,Background=Brush("Surface"),FontFamily=window.FontFamily,Foreground=Brush("Ink"),ShowInTaskbar=false,Topmost=window.Topmost};
    var panel=new StackPanel{Margin=new Thickness(18)};
-   dialog.Content=panel;
-   panel.Children.Add(new TextBlock{Text="K 线均线（EMA）",FontSize=14,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,12)});
-   Func<string,int,TextBox> field=(label,value)=>{
+   dialog.Content=new ScrollViewer{VerticalScrollBarVisibility=ScrollBarVisibility.Auto,Content=panel};
+   panel.Children.Add(new TextBlock{Text="K 线指标",FontSize=14,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,10)});
+   panel.Children.Add(new TextBlock{Text="均线（EMA）",FontSize=12,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,8)});
+   Func<string,string,TextBox> field=(label,value)=>{
     panel.Children.Add(new TextBlock{Text=label,Margin=new Thickness(0,0,0,4),FontSize=11,Foreground=Brush("Muted")});
-    var box=new TextBox{Text=value.ToString(inv),Height=28,Padding=new Thickness(6,3,6,3),VerticalContentAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,0,8)};
+    var box=new TextBox{Text=value,Height=28,Padding=new Thickness(6,3,6,3),VerticalContentAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,0,8)};
     panel.Children.Add(box);return box;
    };
-   var e1=field("EMA 1 周期",Preferences.ClampEma(prefs.Ema1));
-   var e2=field("EMA 2 周期",Preferences.ClampEma(prefs.Ema2));
-   var e3=field("EMA 3 周期",Preferences.ClampEma(prefs.Ema3));
-   var show=new CheckBox{Content="显示均线",IsChecked=prefs.ShowEma,Margin=new Thickness(0,2,0,14),Foreground=Brush("Ink")};panel.Children.Add(show);
-   var save=new Button{Content="保存",Height=30,Background=Brush("Accent"),Foreground=Brushes.White};panel.Children.Add(save);
+   var e1=field("EMA 1 周期",Preferences.ClampEma(prefs.Ema1).ToString(inv));
+   var e2=field("EMA 2 周期",Preferences.ClampEma(prefs.Ema2).ToString(inv));
+   var e3=field("EMA 3 周期",Preferences.ClampEma(prefs.Ema3).ToString(inv));
+   var showEma=new CheckBox{Content="显示均线",IsChecked=prefs.ShowEma,Margin=new Thickness(0,2,0,14),Foreground=Brush("Ink")};panel.Children.Add(showEma);
+   panel.Children.Add(new TextBlock{Text="超级趋势（经典）",FontSize=12,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,8)});
+   panel.Children.Add(new TextBlock{Text="Wilder ATR + 倍数；非 LuxAlgo。",FontSize=11,Foreground=Brush("Muted"),Margin=new Thickness(0,0,0,8),TextWrapping=TextWrapping.Wrap});
+   var stPeriod=field("ATR 周期",Preferences.ClampStPeriod(prefs.StPeriod).ToString(inv));
+   var stMult=field("倍数",Preferences.ClampStMult(prefs.StMult).ToString("0.##",inv));
+   var showSt=new CheckBox{Content="显示超级趋势",IsChecked=prefs.ShowSuperTrend,Margin=new Thickness(0,2,0,14),Foreground=Brush("Ink")};panel.Children.Add(showSt);
+   var save=new Button{Content="保存",Height=32,Background=Brush("Accent"),Foreground=Brushes.White};panel.Children.Add(save);
    save.Click+=(s,e)=>{
-    int a,b,c;
+    int a,b,c,sp;double sm;
     if(!int.TryParse((e1.Text??"").Trim(),NumberStyles.Integer,inv,out a)||!int.TryParse((e2.Text??"").Trim(),NumberStyles.Integer,inv,out b)||!int.TryParse((e3.Text??"").Trim(),NumberStyles.Integer,inv,out c)){
-     MessageBox.Show(dialog,"请输入 2–200 的整数周期。","均线设置",MessageBoxButton.OK,MessageBoxImage.Warning);return;
+     MessageBox.Show(dialog,"均线周期请输入 2–200 的整数。","指标设置",MessageBoxButton.OK,MessageBoxImage.Warning);return;
     }
-    prefs.Ema1=Preferences.ClampEma(a);prefs.Ema2=Preferences.ClampEma(b);prefs.Ema3=Preferences.ClampEma(c);prefs.ShowEma=show.IsChecked==true;
-    ApplyEmaPrefs();Save();dialog.Close();
+    if(!int.TryParse((stPeriod.Text??"").Trim(),NumberStyles.Integer,inv,out sp)||!double.TryParse((stMult.Text??"").Trim(),NumberStyles.Float,inv,out sm)){
+     MessageBox.Show(dialog,"超级趋势：ATR 周期 2–100，倍数 0.5–10。","指标设置",MessageBoxButton.OK,MessageBoxImage.Warning);return;
+    }
+    prefs.Ema1=Preferences.ClampEma(a);prefs.Ema2=Preferences.ClampEma(b);prefs.Ema3=Preferences.ClampEma(c);prefs.ShowEma=showEma.IsChecked==true;
+    prefs.StPeriod=Preferences.ClampStPeriod(sp);prefs.StMult=Preferences.ClampStMult(sm);prefs.ShowSuperTrend=showSt.IsChecked==true;
+    ApplyIndicatorPrefs();Save();dialog.Close();
    };
    dialog.ShowDialog();
   }
@@ -423,7 +440,7 @@ namespace BitGlance {
   void About(Window owner){
    string host;
    try{host=new Uri(client.BaseUrl).Host;}catch{host=client.BaseUrl;}
-   MessageBox.Show(owner,"比特一瞥 BitGlance 1.2.5\n\n参考 PayDance 的桌面交互与窗口位置恢复实现。\n这是修改与移植版本，非 PayDance 官方产品。\n\nBased on PayDance. Copyright (C) 2026 Mr.Baoboer.\nLicensed under the GNU Affero General Public License v3.0 only.\n附加条款：legal/ADDITIONAL_TERMS.md\n\n完整源码与构建脚本位于应用旁的 source 文件夹。\n本应用不含交易功能、不需要账号。\n设置仅保存于本机 LocalAppData/BitGlance。\n\n行情来源："+MarketClient.DisplayName(prefs.Feed)+"（"+host+"）USDT 永续，最新成交价。\n设置可切换 币安 / OKX / Bitget，并可自定义 API 域名。\n上游：https://github.com/MrBaoboer/PayDance","关于与开源",MessageBoxButton.OK,MessageBoxImage.Information);
+   MessageBox.Show(owner,"比特一瞥 BitGlance 1.2.6\n\n参考 PayDance 的桌面交互与窗口位置恢复实现。\n这是修改与移植版本，非 PayDance 官方产品。\n\nBased on PayDance. Copyright (C) 2026 Mr.Baoboer.\nLicensed under the GNU Affero General Public License v3.0 only.\n附加条款：legal/ADDITIONAL_TERMS.md\n\n完整源码与构建脚本位于应用旁的 source 文件夹。\n本应用不含交易功能、不需要账号。\n设置仅保存于本机 LocalAppData/BitGlance。\n\n行情来源："+MarketClient.DisplayName(prefs.Feed)+"（"+host+"）USDT 永续，最新成交价。\n设置可切换 币安 / OKX / Bitget，并可自定义 API 域名。\n上游：https://github.com/MrBaoboer/PayDance","关于与开源",MessageBoxButton.OK,MessageBoxImage.Information);
   }
    public void Exit(){if(exiting)return;CapturePosition();Save();Cleanup();app.Shutdown();}
   void Cleanup(){if(exiting)return;exiting=true;Microsoft.Win32.SystemEvents.DisplaySettingsChanged-=DisplayChanged;timer.Stop();cts.Cancel();cts.Dispose();client.Dispose();if(tray!=null){tray.Visible=false;tray.Dispose();}}
