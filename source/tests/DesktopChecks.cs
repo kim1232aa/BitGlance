@@ -1,0 +1,163 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// In-process WPF tests with isolated settings and real public futures data.
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Reflection;
+using System.Threading.Tasks;
+using System.Web.Script.Serialization;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using BitGlance;
+class DesktopChecks {
+ static List<string> log=new List<string>();static int code=0;
+ static void Check(bool value,string name){if(!value)throw new Exception(name);log.Add("PASS "+name);}
+ static void Click(Window w,string name){((Button)w.FindName(name)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}
+ static int inputTime=1000;
+ static void DoubleClick(Window w,string name){
+  if(name!="MiniTarget"){((Control)w.FindName(name)).RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice,0,MouseButton.Left){RoutedEvent=Control.MouseDoubleClickEvent});return;}
+  for(int i=0;i<2;i++){
+   w.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice,inputTime,MouseButton.Left){RoutedEvent=UIElement.PreviewMouseLeftButtonDownEvent});
+   w.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice,inputTime+20,MouseButton.Left){RoutedEvent=UIElement.PreviewMouseLeftButtonUpEvent});inputTime+=80;
+  }inputTime+=1000;
+ }
+ static void Pointer(Desktop desktop,string method,params object[] args){typeof(Desktop).GetMethod(method,BindingFlags.Instance|BindingFlags.NonPublic).Invoke(desktop,args);}
+ static string Text(Window w,string name){return ((TextBlock)w.FindName(name)).Text;}
+ static async Task WaitFor(Func<bool> predicate){for(int i=0;i<80;i++){if(predicate())return;await Task.Delay(250);}throw new Exception("Timed out waiting for UI state");}
+ static void Configure(Window w,int opacity,bool change,bool unit,string screenshot=null){
+  w.Dispatcher.BeginInvoke(new Action(()=>{
+   var dialog=w.OwnedWindows.Cast<Window>().Single();var panel=(StackPanel)dialog.Content;
+   panel.Children.OfType<Slider>().Single().Value=opacity;
+   panel.Children.OfType<CheckBox>().Single(c=>c.Name=="ShowChangeOption").IsChecked=change;
+   panel.Children.OfType<CheckBox>().Single(c=>c.Name=="ShowUnitOption").IsChecked=unit;
+   if(screenshot!=null)Render(dialog,screenshot);
+   panel.Children.OfType<Grid>().Single().Children.OfType<Button>().Last().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+  }));Click(w,"SettingsButton");
+ }
+ static RenderTargetBitmap Render(Window w,string file){
+  w.UpdateLayout();var bitmap=new RenderTargetBitmap((int)Math.Ceiling(w.ActualWidth*2),(int)Math.Ceiling(w.ActualHeight*2),192,192,PixelFormats.Pbgra32);bitmap.Render(w);
+  if(file!=null){var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(bitmap));using(var f=File.Create(file))png.Save(f);}return bitmap;
+ }
+ static byte Alpha(RenderTargetBitmap bitmap,int x,int y){byte[] px=new byte[4];bitmap.CopyPixels(new Int32Rect(x,y,1,1),px,4,0);return px[3];}
+ static int OpaqueDigits(Window w,RenderTargetBitmap bitmap){
+  var label=(TextBlock)w.FindName("MiniPrice");var origin=label.TransformToAncestor(w).Transform(new Point(0,0));int count=0;
+  for(int y=(int)(origin.Y*2);y<(int)((origin.Y+label.ActualHeight)*2);y++)for(int x=(int)(origin.X*2);x<(int)((origin.X+label.ActualWidth)*2);x++)if(Alpha(bitmap,x,y)==255)count++;
+  return count;
+ }
+ [STAThread]static int Main(string[] args){
+  ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
+  string folder=args[0];Directory.CreateDirectory(folder);string config=Path.Combine(folder,"isolated-settings.json");
+  var settings=new Preferences{MainPosition=new SavedPosition{X=140,Y=100},MiniPosition=new SavedPosition{X=620,Y=180},Opacity=100};
+  File.WriteAllText(config,new JavaScriptSerializer().Serialize(settings));
+  var app=new Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};var desktop=new Desktop(app,config);var w=app.MainWindow;
+  app.Dispatcher.BeginInvoke(new Action(async ()=>{
+   try{
+    Func<bool> loaded=()=>Text(w,"PriceLabel")!="— —"&&((TextBlock)w.FindName("ChartMessage")).Visibility==Visibility.Collapsed;
+    await WaitFor(loaded);await Task.Delay(200);
+    Check(w.Width==456&&w.ShowInTaskbar,"main window opens and uses taskbar");
+    Check(Text(w,"PairLabel")=="BTC / USDT 永续"&&Text(w,"SourceLabel").Contains("最新成交价"),"BTC uses explicitly labelled USDT perpetual last price");
+    Check(w.FindName("MiniButton")==null&&w.FindName("ExpandButton")==null,"old mini button and expand arrow are removed");
+    Render(w,Path.Combine(folder,"main.png"));
+    Click(w,"EthButton");await WaitFor(loaded);Check(Text(w,"PairLabel")=="ETH / USDT 永续"&&Text(w,"VolumeCaption").EndsWith("ETH"),"ETH tab updates quote, chart and volume unit");
+    Click(w,"SolButton");await WaitFor(loaded);Check(Text(w,"PairLabel")=="SOL / USDT 永续","SOL tab loads perpetual market");Render(w,Path.Combine(folder,"sol.png"));
+    Click(w,"BtcButton");Click(w,"EthButton");Click(w,"SolButton");await WaitFor(loaded);
+    var displayed=(Quote)typeof(Desktop).GetField("quote",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(desktop);
+    Check(displayed.Symbol=="SOLUSDT"&&Text(w,"PairLabel").StartsWith("SOL"),"rapid switching discards old in-flight contract responses");
+    Click(w,"WeekButton");await WaitFor(()=>Text(w,"ChartTitle").Contains("1 小时"));Check(Text(w,"ChartTitle").Contains("1 小时"),"7d futures chart loads");
+    Click(w,"DayButton");await WaitFor(()=>Text(w,"ChartTitle").Contains("5 分钟"));
+    Click(w,"BtcButton");await WaitFor(loaded);
+    var chart=(PriceChart)((ContentControl)w.FindName("ChartHost")).Content;
+    Check(!chart.Candlesticks&&((StackPanel)w.FindName("CandleIntervals")).Visibility==Visibility.Collapsed,"line chart remains the initial default");
+    Click(w,"CandleButton");await WaitFor(loaded);w.UpdateLayout();
+    Check(chart.Candlesticks&&chart.IntervalMinutes==5&&chart.View.Count==60&&chart.Data.Count==300,"candle mode loads 300 five-minute OHLCV bars and shows latest 60");
+    Check(chart.ActualHeight>=100&&((StackPanel)w.FindName("LineRanges")).Visibility==Visibility.Collapsed,"candle layout provides a larger plot and period controls");
+    Render(w,Path.Combine(folder,"candles.png"));
+    int before=chart.View.Count;
+    chart.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice,0,120){RoutedEvent=UIElement.MouseWheelEvent});
+    Check(chart.View.Count<before,"mouse wheel event zooms the actual chart control");
+    chart.Latest();chart.Pan(-40);long anchor=chart.Visible[0].Time;string start=Text(w,"ChartStart");
+    Check(!chart.View.Following&&((Button)w.FindName("LatestButton")).Content.ToString()=="最新 →"&&Text(w,"ChartTitle").Contains("查看历史"),"history navigation labels historical bars and offers return to latest");
+    Click(w,"RefreshButton");await WaitFor(()=>!((bool)typeof(Desktop).GetField("loading",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(desktop))&&!((bool)typeof(Desktop).GetField("chartLoading",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(desktop)));
+    Check(chart.Visible[0].Time==anchor&&Text(w,"ChartStart")==start,"real API refresh keeps the selected historical time range");
+    Click(w,"LatestButton");Check(chart.View.Following&&chart.Visible.Last().Time==chart.Data.Last().Time,"latest button restores follow mode");
+    int first=chart.View.First;
+    chart.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice,0,MouseButton.Left){RoutedEvent=UIElement.MouseLeftButtonDownEvent});
+    Check(chart.IsMouseCaptured,"chart drag captures pointer until release");
+    typeof(PriceChart).GetField("dragX",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(chart,Mouse.GetPosition(chart).X-10*(chart.ActualWidth-68)/chart.View.Count);
+    chart.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice,0){RoutedEvent=UIElement.MouseMoveEvent});
+    chart.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice,0,MouseButton.Left){RoutedEvent=UIElement.MouseLeftButtonUpEvent});
+    Check(chart.View.First<first&&!chart.IsMouseCaptured,"simulated drag events pan history and release pointer capture");
+    chart.Latest();chart.Reset();
+    string details=chart.Describe(chart.Data.Last());Check(details.Contains("开 ")&&details.Contains("高 ")&&details.Contains("低 ")&&details.Contains("收 ")&&details.Contains("BTC")&&details.Contains("收盘"),"hover detail includes real OHLC, base volume and candle closure state");
+    typeof(PriceChart).GetField("hover",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(chart,chart.ActualWidth*0.7);chart.InvalidateVisual();await Task.Delay(100);Render(w,Path.Combine(folder,"candles-detail.png"));
+    chart.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice,0){RoutedEvent=UIElement.MouseLeaveEvent});
+    foreach(string period in MarketClient.Intervals){
+     Click(w,"Interval"+period+"Button");await WaitFor(loaded);
+     long step=MarketClient.IntervalMinutes(period)*60000L;
+     Check(chart.IntervalMinutes==MarketClient.IntervalMinutes(period)&&chart.Data.Zip(chart.Data.Skip(1),(a,b)=>b.Time-a.Time).All(d=>d==step),"period button loads correct candle spacing: "+period);
+    }
+    var candlePrefs=new JavaScriptSerializer().Deserialize<Preferences>(File.ReadAllText(config));Check(candlePrefs.Candles&&candlePrefs.ChartInterval=="1H","chart mode and candle interval persist independently");
+    Click(w,"Interval1mButton");Click(w,"Interval15mButton");Click(w,"Interval5mButton");Click(w,"EthButton");Click(w,"SolButton");await WaitFor(loaded);
+    Check(chart.IntervalMinutes==5&&chart.Asset=="SOL"&&chart.Data.All(c=>c.High>=c.Open&&c.Low<=c.Close)&&chart.Data.Zip(chart.Data.Skip(1),(a,b)=>b.Time-a.Time).All(d=>d==300000),"rapid period and contract switches retain final SOL 5m selection");
+    Render(w,Path.Combine(folder,"sol-candles.png"));Click(w,"ThemeButton");await Task.Delay(100);Render(w,Path.Combine(folder,"candles-dark.png"));Click(w,"ThemeButton");
+    DoubleClick(w,"PriceTarget");await Task.Delay(150);DoubleClick(w,"MiniTarget");await Task.Delay(150);
+    Check(chart.Candlesticks&&chart.Asset=="SOL"&&w.ShowInTaskbar,"mini round trip preserves the selected candle chart");
+    Click(w,"BtcButton");await WaitFor(loaded);Click(w,"LineButton");await WaitFor(loaded);
+    Check(!chart.Candlesticks&&Text(w,"ChartTitle").Contains("5 分钟采样"),"switching back restores the 24-hour line chart");
+    ((ContentControl)w.FindName("PriceTarget")).RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice,0,MouseButton.Left){RoutedEvent=UIElement.MouseLeftButtonDownEvent});
+    Check(w.ShowInTaskbar,"single price click does not enter mini mode");
+    DoubleClick(w,"PriceTarget");await Task.Delay(250);
+    Check(w.Topmost&&!w.ShowInTaskbar&&w.Height==80,"double price click enters compact mini mode");
+    Check(Text(w,"MiniPrice")==Text(w,"PriceLabel")&&!Text(w,"MiniStatus").Contains(":"),"mini keeps price and 24h change but removes update time");
+    Render(w,Path.Combine(folder,"mini.png"));
+    Configure(w,35,true,true);await Task.Delay(250);
+    Check(w.Opacity==1&&((Border)w.FindName("Shell")).Opacity==0.35&&((ContentControl)w.FindName("MiniTarget")).Opacity==1,"35 percent fades background only");
+    Render(w,Path.Combine(folder,"mini-35.png"));
+    Configure(w,0,true,true);await Task.Delay(250);var transparent=Render(w,Path.Combine(folder,"mini-0.png"));
+    Check(((Border)w.FindName("Shell")).Opacity==0&&Alpha(transparent,24,transparent.PixelHeight/2)==1,"0 percent keeps an alpha-1 input surface to stop click-through");
+    Check(OpaqueDigits(w,transparent)>100,"price digits remain fully opaque at zero background");
+    var startPoint=w.PointToScreen(new Point(0,0));
+    for(int i=0;i<10;i++){
+     var pressPoint=w.PointToScreen(new Point(w.Width/2,w.Height/2));var beforeDrag=w.PointToScreen(new Point(0,0));var end=pressPoint+new Vector(i%2==0?30:-30,i%2==0?12:-12);
+     Pointer(desktop,"BeginMiniPointer",pressPoint,(uint)(10000+i*50));Check(w.IsMouseCaptured,"repeat drag "+(i+1)+" captures input");
+     Pointer(desktop,"MoveMiniPointer",end);Pointer(desktop,"EndMiniPointer",end);await Task.Delay(20);
+     var afterDrag=w.PointToScreen(new Point(0,0));Check(Math.Abs(afterDrag.X-beforeDrag.X-(end.X-pressPoint.X))<2&&Math.Abs(afterDrag.Y-beforeDrag.Y-(end.Y-pressPoint.Y))<2&&!w.IsMouseCaptured&&!w.ShowInTaskbar,"repeat drag "+(i+1)+" moves the native window without expanding");
+    }
+    Check((w.PointToScreen(new Point(0,0))-startPoint).Length<2,"alternating repeated drags return to the starting screen location");
+    for(int i=0;i<11;i++){
+     DoubleClick(w,"MiniTarget");await Task.Delay(60);Check(w.ShowInTaskbar&&!w.IsMouseCaptured,"repeat raw double click "+(i+1)+" expands and releases capture");
+     DoubleClick(w,"PriceTarget");await Task.Delay(60);Check(!w.ShowInTaskbar,"repeat double-click cycle "+(i+1)+" returns to mini");
+    }
+    var cancelPoint=w.PointToScreen(new Point(30,30));Pointer(desktop,"BeginMiniPointer",cancelPoint,25000u);w.ReleaseMouseCapture();
+    Pointer(desktop,"EndMiniPointer",cancelPoint);Check(!w.ShowInTaskbar&&!w.IsMouseCaptured,"unexpected capture loss does not expand or leave a stuck gesture");
+    Configure(w,0,false,true);await Task.Delay(150);
+    Check(((TextBlock)w.FindName("MiniStatus")).Visibility==Visibility.Collapsed&&((TextBlock)w.FindName("MiniUnit")).Visibility==Visibility.Visible,"change visibility can be disabled independently");
+    Configure(w,0,true,false);await Task.Delay(150);
+    Check(((TextBlock)w.FindName("MiniStatus")).Visibility==Visibility.Visible&&((TextBlock)w.FindName("MiniUnit")).Visibility==Visibility.Collapsed,"USDT unit can be hidden independently");
+    Configure(w,0,false,false);await Task.Delay(250);
+    Check(w.Height==61&&((TextBlock)w.FindName("MiniStatus")).Visibility==Visibility.Collapsed,"hiding both fields leaves a compact number-only widget");
+    Render(w,Path.Combine(folder,"number-only.png"));
+    typeof(Desktop).GetMethod("Failure",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(desktop,new object[]{"测试断线",30});
+    Check(((TextBlock)w.FindName("MiniStatus")).Visibility==Visibility.Visible&&Text(w,"MiniStatus").Contains("离线"),"offline warning stays visible when 24h change is hidden");
+    DoubleClick(w,"MiniTarget");await Task.Delay(200);
+    Check(w.Width==456&&w.ShowInTaskbar&&((Border)w.FindName("Shell")).Opacity==1,"double mini price click restores opaque main window");
+    Click(w,"RefreshButton");await WaitFor(()=>!Text(w,"LiveLabel").Contains("离线"));
+    Click(w,"ThemeButton");await Task.Delay(200);Check(((SolidColorBrush)w.Resources["Surface"]).Color.R==28,"dark theme still works");Render(w,Path.Combine(folder,"dark.png"));Click(w,"ThemeButton");
+    Configure(w,0,false,false,Path.Combine(folder,"settings.png"));
+    Click(w,"PinButton");Check(w.Topmost,"main pin button works");Click(w,"PinButton");
+    Click(w,"HideButton");Check(!w.IsVisible,"hide preserves tray instance");desktop.ShowFull();await Task.Delay(100);Check(w.IsVisible,"tray recovery shows main view");
+    DoubleClick(w,"PriceTarget");await Task.Delay(150);DoubleClick(w,"MiniTarget");await Task.Delay(150);
+    var saved=new JavaScriptSerializer().Deserialize<Preferences>(File.ReadAllText(config));
+    Check(saved.MainPosition!=null&&saved.MiniPosition!=null&&saved.MainPosition.X!=saved.MiniPosition.X,"main and mini positions remain independent");
+    Check(saved.Opacity==0&&!saved.ShowUnit&&!saved.ShowChange&&saved.Symbol=="BTCUSDT","zero opacity and new visibility settings persist");
+   }catch(Exception e){log.Add("FAIL "+e);code=1;}
+   finally{File.WriteAllLines(Path.Combine(folder,"desktop-checks.txt"),log.ToArray());desktop.Exit();}
+  }));
+  app.Run();return code;
+ }
+}
