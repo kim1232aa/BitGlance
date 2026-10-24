@@ -1,8 +1,8 @@
 # 比特一瞥 · BitGlance
 
-一个轻量的 Windows 桌面行情小工具，让 BTC、ETH、SOL 的 USDT 永续价格停留在桌面一角。
+轻量 Windows 桌面行情小窗：BTC / ETH / SOL 的 USDT 永续价格，可钉在桌面一角。
 
-**Windows 10 / 11 · .NET Framework 4.8 · C# / WPF · AGPL-3.0-only**
+**Windows 10 / 11 · .NET Framework 4.8 · C# / WPF · AGPL-3.0-only · v1.2.5**
 
 <img src="docs/images/candles.png" width="360" alt="BitGlance 主窗口与五分钟 K 线" />
 
@@ -10,70 +10,72 @@
 
 ## 功能
 
-- **BTC / ETH / SOL**：Bitget USDT 永续合约最新成交价，可随时切换。
-- **迷你悬浮窗**：始终置顶，拖动移动，双击展开。价格数字始终清晰，可隐藏单位与 24 小时涨跌幅；可选「迷你窗显示 K 线」紧凑浮窗。
-- **背景不透明度 0%–100%**：独立于文字。0% 保留约 0.39% 的近乎不可见点击层，防止点击数字空隙时穿透。
-- **折线 / K 线**：24H / 7D 折线；1m / 5m / 15m / 1h K 线、成交量、滚轮缩放、可见高低点标注、平移及悬停详情。
-- **明暗主题与托盘**：主窗口可置顶，主窗口和迷你窗分别记住位置。
-- **无账号、无 API 密钥**：只读取公开行情，设置保存在本机。
+- **BTC / ETH / SOL**：USDT 永续最新成交价，可随时切换。
+- **多行情源**：设置里切换 **币安**（默认）/ **OKX** / **Bitget**，也可为当前源填写自定义 API 域名（镜像）。无需 API Key。
+- **迷你悬浮窗**：始终置顶，可拖动、可缩放；双击价格展开主窗口。可隐藏单位与 24 小时涨跌幅；可选「迷你窗显示 K 线」紧凑浮窗。
+- **三条均线**：K 线叠加 EMA（默认 **7 / 20 / 50**，蓝 / 橙 / 紫）；迷你窗右上角「设置」可改周期与开关。
+- **折线 / K 线**：24H / 7D 折线；1m / 5m / 15m / 1h K 线、成交量、滚轮缩放、可见高低点、平移与悬停详情；视口右侧留白，最新一根可停在图中间。
+- **背景不透明度 0%–100%**：独立于文字；0% 仍保留极薄点击层，避免点数字空隙穿透。
+- **明暗主题与托盘**：主窗口可置顶；主窗口和迷你窗分别记住位置。
+- **无账号、无交易**：只读公开行情，设置保存在本机。
 
 ## 下载与运行
 
-在本仓库的 **Releases** 中下载 `BitGlance-v1.2.5-Windows.zip`，解压后双击 `BitGlance.exe`。
+从本仓库克隆或复制后，在 Windows 上按下方「从源码构建」生成 `BitGlance.exe`；也可直接使用已编译好的安装目录（例如本机 `C:\BitGlance`）。
 
-需要 Windows 10 / 11 和 .NET Framework 4.8。应用无需安装，也不需要 Node、Rust 或 Python。发布包包含对应源码和许可证文件。
+需要 Windows 10 / 11 和 [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48)。无需安装程序，也不需要 Node、Rust 或 Python。
 
 | 操作 | 方法 |
 | --- | --- |
-| 进入迷你窗 | 双击主窗口的大价格，或按 `Ctrl+M` |
+| 进入迷你窗 | 双击主窗口大价格，或 `Ctrl+M` |
 | 展开主窗口 | 双击迷你窗，或在迷你窗按 `Esc` |
-| 移动迷你窗 | 按住数字或数字周围区域拖动 |
-| 切换币种 | 主窗口顶部、设置，或迷你窗右键菜单 |
+| 移动迷你窗 | 按住标题 / 数字区域拖动 |
+| 缩放迷你窗 | 拖右下角调整大小 |
+| 均线设置 | 迷你窗右上角「设置」 |
+| 切换币种 / 行情源 | 主窗口设置，或迷你窗右键菜单 |
 | 缩放 / 查看历史 | K 线区域滚轮缩放、按住左键拖动 |
-| 回到最新 K 线 | 点击“最新 →” |
+| 回到最新 K 线 | 点击「最新 →」 |
 | 立即刷新 | `F5` 或刷新按钮 |
-| 隐藏 / 恢复 | 点“—”隐藏到托盘，双击托盘恢复 |
+| 隐藏 / 恢复 | 「—」进托盘，双击托盘图标恢复 |
 
 更多操作见 [使用说明](使用说明.md)。
 
 ## 行情与本机数据
 
-行情来自 **Bitget `USDT-FUTURES`**，价格取 `lastPr`，K 线取 `MARKET` 类型。它显示的是永续合约最新成交价。行情按设置的间隔轮询，未收盘 K 线会继续变化。
+默认走 **币安 USDT-M 永续**（公开 ticker / kline；默认 API 基址可在设置里改）。也可切到 OKX SWAP 或 Bitget `USDT-FUTURES`。显示的是永续最新成交价；按设置间隔轮询，未收盘 K 线会继续变。
 
-偏好文件位于 `%LOCALAPPDATA%\BitGlance\settings.json`。应用没有交易、遥测、自动更新或开机自启功能。断线时保留最后成功的价格并显示提示；不同交易所价格可能有差异。
+偏好文件：`%LOCALAPPDATA%\BitGlance\settings.json`。无交易、无遥测、无自动更新、无开机自启。断线时保留最后成功价格并提示；不同交易所价格可能不一致。
 
 ## 从源码构建
 
-在 Windows PowerShell 中进入仓库目录，运行：
+在 Windows PowerShell 进入仓库目录：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\source\build.ps1
 ```
 
-输出位于 `artifacts/build/`。构建使用 .NET Framework 自带的 `csc.exe`，无需 Visual Studio、NuGet 或联网恢复依赖。
+输出在 `artifacts/build/`。使用系统自带的 `csc.exe`，无需 Visual Studio、NuGet 或联网恢复依赖。
 
-一键构建、运行逻辑检查并生成完整发布包：
+一键构建、自检并打发布包：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\source\package.ps1
 ```
 
-输出位于 `artifacts/release/`，包括 ZIP 和 SHA-256 校验文件。交互测试需要可交互的 Windows 桌面，详见 [开发与验证](CONTRIBUTING.md)。
-
-GitHub Actions 会在推送、Pull Request 和手动运行时编译、检查并保存构建产物。它不会自动创建 Release。云端工作流需要上传仓库后首次运行验证。
+输出在 `artifacts/release/`（含 ZIP 与 SHA-256）。交互测试需要可交互桌面，见 [开发与验证](CONTRIBUTING.md)。
 
 ## 项目结构
 
 ```text
-.github/           自动构建工作流、Issue 与 PR 模板
-docs/              预览图、GitHub 发布指引、Release 文案
+.github/           Issue 与 PR 模板
+docs/              预览图、发布指引、Release 文案
 legal/             保留的 PayDance 法律文件
 source/            C# / WPF 源码、资源、构建和测试脚本
 LICENSE            AGPL-3.0-only 正文
-THIRD_PARTY_NOTICES.md  实际引用来源与修改说明
+THIRD_PARTY_NOTICES.md  引用来源与修改说明
 ```
 
-生成的 EXE、ZIP、测试文件和个人设置由 `.gitignore` 排除，成品下载包放在 Releases。
+生成的 EXE、ZIP、测试文件和个人设置由 `.gitignore` 排除（仓库若附带预览图或示例二进制，以实际树为准）。
 
 ## 来源与许可
 
@@ -82,6 +84,8 @@ BitGlance 参考 [PayDance](https://github.com/MrBaoboer/PayDance) 的桌面交�
 > Based on PayDance. Copyright (C) 2026 Mr.Baoboer.
 > Licensed under the GNU Affero General Public License v3.0 only.
 
-代码使用 [AGPL-3.0-only](LICENSE)，保留 [上游附加条款](legal/ADDITIONAL_TERMS.md)。图标和产品预览图来自 BitGlance，没有沿用 PayDance 官方品牌素材。来源、参考提交和修改范围见 [第三方声明](THIRD_PARTY_NOTICES.md)。
+代码使用 [AGPL-3.0-only](LICENSE)，保留 [上游附加条款](legal/ADDITIONAL_TERMS.md)。图标和产品预览图来自 BitGlance，未沿用 PayDance 官方品牌素材。来源与修改范围见 [第三方声明](THIRD_PARTY_NOTICES.md)。
 
-[更新记录](CHANGELOG.md) · [验证记录](验证记录.md) · [GitHub 发布指引](docs/PUBLISHING.md)
+本仓库维护地址：[kim1232aa/BitGlance](https://github.com/kim1232aa/BitGlance)
+
+[更新记录](CHANGELOG.md) · [验证记录](验证记录.md) · [使用说明](使用说明.md)
