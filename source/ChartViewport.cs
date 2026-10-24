@@ -28,7 +28,7 @@ namespace BitGlance {
   public void Zoom(int steps,double anchor){
    if(total==0||steps==0)return;
    anchor=Math.Max(0,Math.Min(1,anchor));double at=first+anchor*(Math.Max(1,Slots)-1);
-   requested=(int)Math.Max(20,Math.Min(160,Math.Round(requested*Math.Pow(1.2,-Math.Max(-20,Math.Min(20,steps))))));
+   requested=(int)Math.Max(8,Math.Min(240,Math.Round(requested*Math.Pow(1.2,-Math.Max(-20,Math.Min(20,steps))))));
    first=Clamp((int)Math.Round(at-anchor*(Math.Max(1,Slots)-1)));Following=first==LiveFirst();
   }
  }

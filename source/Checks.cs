@@ -91,11 +91,11 @@ namespace BitGlance {
     var rolled=history.Skip(1).Concat(new[]{new Candle{Time=301*60000L}}).ToList();view.Update(history,rolled);
     Assert(rolled[view.First].Time==anchor&&!view.Following,"polling preserves history by timestamp when oldest bar expires");
     view.Latest();view.Update(rolled,history);Assert(view.First==240&&view.Following,"live view remains attached to newest candle on refresh");
-    view.Zoom(100,1);Assert(view.Count==20&&view.First==280,"zoom in stops at 20 candles and anchors latest edge");
-    view.Zoom(-100,1);Assert(view.Count==160&&view.First==140,"zoom out stops at 160 candles and anchors latest edge");
+    view.Zoom(100,1);Assert(view.Count==8&&view.First==292,"zoom in stops at 8 candles and anchors latest edge");
+    view.Zoom(-100,1);Assert(view.Count==240&&view.First==60,"zoom out stops at 240 candles and anchors latest edge");
     view.Pan(-9999);Assert(view.First==0&&!view.Following,"pan clamps to oldest loaded candle");
-    view.Pan(9999);Assert(view.First==220&&!view.Following&&view.Count==80,"pan may leave right padding so latest candle sits mid-plot");
-    view.Latest();Assert(view.First==140&&view.Following,"Latest snaps back to live edge");
+    view.Pan(9999);Assert(view.First==180&&!view.Following&&view.Count==120,"pan may leave right padding so latest candle sits mid-plot");
+    view.Latest();Assert(view.First==60&&view.Following,"Latest snaps back to live edge");
     view.Update(history,candles);Assert(view.First==0&&view.Count==2,"short histories never create invalid viewport indices");
     view.Update(candles,new List<Candle>());view.Zoom(1,0.5);view.Pan(-1);Assert(view.Count==0&&view.First==0,"empty chart tolerates navigation while loading");
     Reject(()=>MarketClient.ParseCandles("[]"),"rejects missing chart history");

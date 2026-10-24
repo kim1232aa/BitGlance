@@ -23,7 +23,7 @@ using Forms=System.Windows.Forms;
 
 [assembly:AssemblyTitle("BitGlance · 比特一瞥")]
 [assembly:AssemblyDescription("BTC ETH SOL USDT perpetual desktop price widget")]
-[assembly:AssemblyVersion("1.2.7.0")]
+[assembly:AssemblyVersion("1.2.8.0")]
 [assembly:AssemblyCopyright("BitGlance contributors; window placement based on PayDance © 2026 Mr.Baoboer")]
 namespace BitGlance {
  public sealed class Preferences {
@@ -215,14 +215,14 @@ namespace BitGlance {
   static double ClampSize(double value,double min,double max){return Math.Max(min,Math.Min(max,value));}
   void ApplyMiniChartSize(){
    double w=prefs.MiniChartWidth>0?prefs.MiniChartWidth:340;double h=prefs.MiniChartHeight>0?prefs.MiniChartHeight:360;
-   window.Width=ClampSize(w,260,960);window.Height=ClampSize(h,220,720);
+   var area=SystemParameters.WorkArea;window.Width=ClampSize(w,200,Math.Max(200,area.Width-16));window.Height=ClampSize(h,160,Math.Max(160,area.Height-16));
   }
   void BeginMiniResize(Point screen){
    CancelMiniPointer();miniResizing=true;miniResizeStart=screen;miniResizeW=window.Width;miniResizeH=window.Height;window.CaptureMouse();window.Cursor=Cursors.SizeNWSE;
   }
   void MoveMiniResize(Point screen){
    if(!miniResizing)return;var d=screen-miniResizeStart;
-   window.Width=ClampSize(miniResizeW+d.X,260,960);window.Height=ClampSize(miniResizeH+d.Y,220,720);
+   var area=SystemParameters.WorkArea;window.Width=ClampSize(miniResizeW+d.X,200,Math.Max(200,area.Width-16));window.Height=ClampSize(miniResizeH+d.Y,160,Math.Max(160,area.Height-16));
   }
   void EndMiniResize(){
    if(!miniResizing)return;miniResizing=false;if(window.IsMouseCaptured)window.ReleaseMouseCapture();window.Cursor=Cursors.Arrow;
@@ -440,7 +440,7 @@ namespace BitGlance {
   void About(Window owner){
    string host;
    try{host=new Uri(client.BaseUrl).Host;}catch{host=client.BaseUrl;}
-   MessageBox.Show(owner,"比特一瞥 BitGlance 1.2.7\n\n参考 PayDance 的桌面交互与窗口位置恢复实现。\n这是修改与移植版本，非 PayDance 官方产品。\n\nBased on PayDance. Copyright (C) 2026 Mr.Baoboer.\nLicensed under the GNU Affero General Public License v3.0 only.\n附加条款：legal/ADDITIONAL_TERMS.md\n\n完整源码与构建脚本位于应用旁的 source 文件夹。\n本应用不含交易功能、不需要账号。\n设置仅保存于本机 LocalAppData/BitGlance。\n\n行情来源："+MarketClient.DisplayName(prefs.Feed)+"（"+host+"）USDT 永续，最新成交价。\n设置可切换 币安 / OKX / Bitget，并可自定义 API 域名。\n上游：https://github.com/MrBaoboer/PayDance","关于与开源",MessageBoxButton.OK,MessageBoxImage.Information);
+   MessageBox.Show(owner,"比特一瞥 BitGlance 1.2.8\n\n参考 PayDance 的桌面交互与窗口位置恢复实现。\n这是修改与移植版本，非 PayDance 官方产品。\n\nBased on PayDance. Copyright (C) 2026 Mr.Baoboer.\nLicensed under the GNU Affero General Public License v3.0 only.\n附加条款：legal/ADDITIONAL_TERMS.md\n\n完整源码与构建脚本位于应用旁的 source 文件夹。\n本应用不含交易功能、不需要账号。\n设置仅保存于本机 LocalAppData/BitGlance。\n\n行情来源："+MarketClient.DisplayName(prefs.Feed)+"（"+host+"）USDT 永续，最新成交价。\n设置可切换 币安 / OKX / Bitget，并可自定义 API 域名。\n上游：https://github.com/MrBaoboer/PayDance","关于与开源",MessageBoxButton.OK,MessageBoxImage.Information);
   }
    public void Exit(){if(exiting)return;CapturePosition();Save();Cleanup();app.Shutdown();}
   void Cleanup(){if(exiting)return;exiting=true;Microsoft.Win32.SystemEvents.DisplaySettingsChanged-=DisplayChanged;timer.Stop();cts.Cancel();cts.Dispose();client.Dispose();if(tray!=null){tray.Visible=false;tray.Dispose();}}

@@ -2,7 +2,7 @@
 
 轻量 Windows 桌面行情小窗：BTC / ETH / SOL 的 USDT 永续价格，可钉在桌面一角。
 
-**Windows 10 / 11 · .NET Framework 4.8 · C# / WPF · AGPL-3.0-only · v1.2.7**
+**Windows 10 / 11 · .NET Framework 4.8 · C# / WPF · AGPL-3.0-only · v1.2.8**
 
 <img src="docs/images/candles.png" width="360" alt="BitGlance 主窗口与五分钟 K 线" />
 
