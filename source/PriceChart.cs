@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Modified 2026-10-24: PreviewMouseWheel zoom, visible-range high/low labels, compact mini chart,
-// three EMA overlays, classic SuperTrend, top-left indicator legend with last values.
+// three EMA overlays, classic SuperTrend, top-left indicator legend with last values,
+// dedicated volume pane (~10% height) and HH:mm time axis under K-lines.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -132,13 +133,51 @@ namespace BitGlance {
    if(double.IsNaN(value))return "—";
    return value.ToString(string.IsNullOrEmpty(priceFormat)?"N2":priceFormat,inv);
   }
+  // Compact HH:mm for the in-plot X axis (local time).
+  public static string FormatAxisTime(long unixMs){return MarketClient.Unix(unixMs).ToLocalTime().ToString("HH:mm",inv);}
+  // Step between time labels so HH:mm chips do not crowd (target ~minLabelGap px).
+  public static int TimeAxisStep(int candleCount,double plotWidth,double minLabelGap=44){
+   if(candleCount<=1)return 1;
+   double gap=Math.Max(24,minLabelGap);
+   int maxLabels=Math.Max(2,(int)Math.Floor(plotWidth/gap)+1);
+   if(maxLabels>=candleCount)return 1;
+   return Math.Max(1,(int)Math.Ceiling((candleCount-1)/(double)(maxLabels-1)));
+  }
+  public static int[] TimeAxisIndices(int candleCount,double plotWidth,double minLabelGap=44){
+   if(candleCount<=0)return new int[0];
+   if(candleCount==1)return new[]{0};
+   int step=TimeAxisStep(candleCount,plotWidth,minLabelGap);
+   var idxs=new List<int>();
+   for(int i=0;i<candleCount;i+=step)idxs.Add(i);
+   int last=candleCount-1;
+   if(idxs[idxs.Count-1]!=last){
+    if(idxs.Count>1&&(last-idxs[idxs.Count-2])<(step/2+1))idxs[idxs.Count-1]=last;
+    else idxs.Add(last);
+   }
+   return idxs.ToArray();
+  }
+  public static double TimeAxisBand(bool compact){return compact?12:14;}
+  public static double VolumePaneHeight(double chartHeight,bool compact){
+   if(chartHeight<=0)return 0;
+   double h=chartHeight*(compact?0.10:0.12);
+   return compact?Math.Max(10,Math.Min(26,h)):Math.Max(16,Math.Min(42,h));
+  }
+  public static double VolumeBarHeight(decimal volume,decimal maxVolume,double paneHeight){
+   if(paneHeight<=0||maxVolume<=0||volume<=0)return 0;
+   return Math.Max(1,paneHeight*(double)(volume/maxVolume));
+  }
   static int ClampPeriod(int period){return period<2?2:(period>200?200:period);}
   FormattedText Label(string text,double size,Brush color){return new FormattedText(text,inv,FlowDirection.LeftToRight,new Typeface("Segoe UI"),size,color,VisualTreeHelper.GetDpi(this).PixelsPerDip);}
   protected override void OnRender(DrawingContext dc){
    base.OnRender(dc);double w=ActualWidth,h=ActualHeight;if(w<30||h<30)return;
    dc.DrawRectangle(Brushes.Transparent,null,new Rect(0,0,w,h));
    var grid=new Pen(Dark?ColorBrush(53,65,57):ColorBrush(232,233,226),1);grid.DashStyle=DashStyles.Dash;
-   var rows=Visible;double left=2,right=left+PlotWidth,top=12,bottom=h-(Candlesticks&&!Compact?39:13);
+   var rows=Visible;double left=2,right=left+PlotWidth,top=12;
+   double timeBand=Candlesticks?TimeAxisBand(Compact):0;
+   double volBand=Candlesticks?VolumePaneHeight(h,Compact):0;
+   double gap=Candlesticks?(Compact?2:3):0;
+   double bottom=h-(Candlesticks?timeBand+volBand+gap+2:13);
+   double volTop=bottom+gap,volBottom=volTop+volBand;
    if(bottom<=top)return;
    for(int i=0;i<3;i++)dc.DrawLine(grid,new Point(left,top+(bottom-top)*i/2),new Point(right,top+(bottom-top)*i/2));
    if(rows.Count<2)return;
@@ -165,15 +204,21 @@ namespace BitGlance {
      var c=rows[i];var color=c.Close>=c.Open?up:down;double px=x(i),a=y(c.Open),b=y(c.Close);
      dc.DrawLine(new Pen(color,1),new Point(px,y(c.High)),new Point(px,y(c.Low)));
      dc.DrawRectangle(color,null,new Rect(px-body/2,Math.Min(a,b),body,Math.Max(1,Math.Abs(a-b))));
-     if(!Compact){double volume=maxVolume>0?24*(double)(c.Volume/maxVolume):0;dc.PushOpacity(0.38);dc.DrawRectangle(color,null,new Rect(px-body/2,h-3-volume,body,volume));dc.Pop();}
+     double vh=VolumeBarHeight(c.Volume,maxVolume,volBand);
+     if(vh>0){dc.PushOpacity(Compact?0.55:0.62);dc.DrawRectangle(color,null,new Rect(px-body/2,volBottom-vh,body,vh));dc.Pop();}
+    }
+    if(volBand>0){
+     var sep=new Pen(Muted,0.5);sep.DashStyle=DashStyles.Dot;
+     dc.DrawLine(sep,new Point(left,volTop),new Point(right,volTop));
     }
     if(!Compact){
      for(int i=0;i<3;i++){
       double value=hi-(hi-lo)*i/2;var label=Label(value.ToString(PriceFormat,inv),9,Muted);label.MaxTextWidth=64;label.Trimming=TextTrimming.CharacterEllipsis;
       dc.DrawText(label,new Point(right+5,top+(bottom-top)*i/2-label.Height/2));
      }
-     dc.DrawText(Label("量",9,Muted),new Point(right+5,h-23));
+     if(volBand>0)dc.DrawText(Label("量",9,Muted),new Point(right+5,volTop+(volBand-9)/2));
     }
+    DrawTimeAxis(dc,rows,x,left,right,volBottom,timeBand);
     DrawVisibleExtremes(dc,rows,x,y,left,right,w);
     if(View.Following){
      var last=rows[rows.Count-1];double py=y(last.Close);var color=last.Close>=last.Open?up:down;
@@ -199,12 +244,22 @@ namespace BitGlance {
     int index;
     if(Candlesticks){int slotsH=Math.Max(1,View.Slots);index=Math.Min(rows.Count-1,Math.Max(0,(int)((hover-left)/PlotWidth*slotsH)));}
     else {long t=rows[0].Time+(long)((hover-left)/PlotWidth*(rows[rows.Count-1].Time-rows[0].Time));index=rows.Select((c,i)=>new{c,i}).OrderBy(v=>Math.Abs(v.c.Time-t)).First().i;}
-    var selected=rows[index];double px=x(index),py=y(selected.Close);dc.DrawLine(new Pen(Muted,0.7),new Point(px,top),new Point(px,h-3));
+    var selected=rows[index];double px=x(index),py=y(selected.Close);double crossBottom=Candlesticks?volBottom:h-3;dc.DrawLine(new Pen(Muted,0.7),new Point(px,top),new Point(px,crossBottom));
     dc.DrawEllipse(Candlesticks?(selected.Close>=selected.Open?up:down):orange,new Pen(Surface,1.5),new Point(px,py),3,3);
     string text=Candlesticks?Describe(selected):MarketClient.Unix(selected.Time).ToLocalTime().ToString("MM/dd HH:mm")+"   "+selected.Close.ToString(PriceFormat,inv)+" USDT";
     var label=Label(text,10,Ink);label.MaxTextWidth=w-20;label.Trimming=TextTrimming.CharacterEllipsis;
     double width=Math.Min(w,label.Width+16),tx=Math.Max(0,Math.Min(w-width,px-width/2));
     dc.DrawRoundedRectangle(Surface,new Pen(Muted,0.5),new Rect(tx,0,width,label.Height+10),5,5);dc.DrawText(label,new Point(tx+8,5));
+   }
+  }
+  void DrawTimeAxis(DrawingContext dc,List<Candle> rows,Func<int,double> x,double left,double right,double volBottom,double timeBand){
+   if(rows==null||rows.Count==0||timeBand<=0)return;
+   double font=Compact?8:9;double minGap=Compact?36:44;
+   foreach(int i in TimeAxisIndices(rows.Count,right-left,minGap)){
+    string text=FormatAxisTime(rows[i].Time);var label=Label(text,font,Muted);
+    double px=x(i),tx=px-label.Width/2;
+    if(tx<left)tx=left;if(tx+label.Width>right)tx=right-label.Width;
+    dc.DrawText(label,new Point(tx,volBottom+Math.Max(0,(timeBand-label.Height)/2)));
    }
   }
   void ExpandRange(double[] series,ref double lo,ref double hi){

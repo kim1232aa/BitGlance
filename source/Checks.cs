@@ -83,6 +83,12 @@ namespace BitGlance {
     Assert(lastDir==-1,"SuperTrend flips to down after sustained decline");
     var emaLast=PriceChart.ComputeEma(emaSeed,3);double lv;Assert(PriceChart.TryLastValue(emaLast,out lv)&&Math.Abs(lv-28)<1e-9,"legend last-value helper skips leading NaN");
     Assert(PriceChart.FormatLegendValue(double.NaN,"N2")=="—"&&PriceChart.FormatLegendValue(12.5,"N2")=="12.50","legend formats NaN as dash");
+    Assert(PriceChart.TimeAxisStep(1,200)==1&&PriceChart.TimeAxisStep(60,264,44)>=5,"time axis step grows with denser candles");
+    var axisIdx=PriceChart.TimeAxisIndices(60,300,44);Assert(axisIdx.Length>=2&&axisIdx[0]==0&&axisIdx[axisIdx.Length-1]==59,"time axis indices always include first and last visible candle");
+    Assert(PriceChart.TimeAxisIndices(0,100).Length==0&&PriceChart.TimeAxisIndices(1,100).SequenceEqual(new[]{0}),"empty or single candle time axis edge cases");
+    Assert(Math.Abs(PriceChart.VolumePaneHeight(200,false)-24)<1e-9&&PriceChart.VolumePaneHeight(80,true)>=10,"volume pane is ~12% full / ~10% compact with clamps");
+    Assert(PriceChart.VolumeBarHeight(50,100,20)==10&&PriceChart.VolumeBarHeight(0,100,20)==0&&PriceChart.VolumeBarHeight(10,0,20)==0,"volume bars scale to visible max and ignore zero max");
+    Assert(PriceChart.FormatAxisTime(0)==MarketClient.Unix(0).ToLocalTime().ToString("HH:mm",CultureInfo.InvariantCulture),"axis time is local HH:mm");
     Assert(MarketClient.Intervals.Select(MarketClient.IntervalMinutes).SequenceEqual(new[]{1,5,15,60}),"four supported candle periods map to correct durations");
     var history=Enumerable.Range(0,300).Select(i=>new Candle{Time=(i+1)*60000L,Open=2,High=3,Low=1,Close=2,Volume=0}).ToList();
     var view=new ChartViewport();view.Update(new List<Candle>(),history);

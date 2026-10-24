@@ -34,7 +34,7 @@ namespace BitGlance {
   public MarketClient() : this("binance",null) {}
   public MarketClient(string source,string baseOverride) {
    client=new HttpClient(); client.Timeout=TimeSpan.FromSeconds(12);
-   client.DefaultRequestHeaders.UserAgent.ParseAdd("BitGlance/1.2.8");
+   client.DefaultRequestHeaders.UserAgent.ParseAdd("BitGlance/1.2.9");
    Configure(source,baseOverride);
   }
   public void Configure(string source,string baseOverride) {
